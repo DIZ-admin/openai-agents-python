@@ -38,6 +38,7 @@ from ..models.function_tool_models import (
 from ..performance.cache_manager import ErniCacheManager
 from ..performance.circuit_breaker import call_openai_with_circuit_breaker
 from ..performance.cost_optimizer import CostBudget, CostOptimizer, ModelType
+from ..performance.rate_limiter import get_rate_limiter
 from ..utils.image_processor import ImageProcessor
 from ..utils.pii_detector import PIIDetector
 
@@ -563,13 +564,18 @@ async def _call_openai_vision_api_with_retry(
     api_key: str,
 ) -> Any:
     """
-    Call OpenAI Vision API with retry logic and exponential backoff
+    Call OpenAI Vision API with retry logic, rate limiting, and exponential backoff
 
     Retry strategy:
     - Max 3 attempts
     - Exponential backoff: 2s, 4s, 8s (capped at 30s)
     - Retry on: timeout, connection errors, rate limits, 5xx errors
     - No retry on: 4xx errors (except 429 rate limit)
+
+    Rate limiting:
+    - Token bucket algorithm for RPM and TPM limits
+    - Automatic queuing when limits reached
+    - Per-model rate limits (gpt-4o vs gpt-4o-mini)
 
     Args:
         base64_image: Base64-encoded image
@@ -585,14 +591,24 @@ async def _call_openai_vision_api_with_retry(
         RetryableAPIError: For 5xx and 429 errors
         openai.APIStatusError: For non-retryable 4xx errors
     """
+    # Get rate limiter for this model
+    rate_limiter = get_rate_limiter(model)
+
+    # Estimate tokens for rate limiting
+    # Vision API typically uses ~1000-2000 tokens per image
+    # Add tokens for prompt and schema
+    estimated_tokens = 1500 + len(json_schema) // 4  # Rough estimate
+
     try:
-        # Create specialized prompt based on fields
-        system_prompt = _create_system_prompt(fields_to_analyze)
-        user_prompt = _create_user_prompt(fields_to_analyze)
+        # Acquire rate limit before making request
+        async with rate_limiter.acquire(estimated_tokens=estimated_tokens):
+            # Create specialized prompt based on fields
+            system_prompt = _create_system_prompt(fields_to_analyze)
+            user_prompt = _create_user_prompt(fields_to_analyze)
 
-        client = openai.AsyncOpenAI(api_key=api_key)
+            client = openai.AsyncOpenAI(api_key=api_key)
 
-        response = await client.chat.completions.create(
+            response = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},

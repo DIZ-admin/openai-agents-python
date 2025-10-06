@@ -26,6 +26,7 @@ from .performance.batch_processor import BatchProcessor
 from .performance.cache_manager import ErniCacheManager
 from .performance.circuit_breaker import CircuitBreaker
 from .performance.cost_optimizer import CostBudget, CostOptimizer
+from .performance.rate_limiter import RateLimiter, get_rate_limiter
 from .utils.image_processor import ImageProcessor
 
 logger = structlog.get_logger(__name__)
@@ -62,9 +63,16 @@ class IMetricsCollector(Protocol):
 
 class IImageProcessor(Protocol):
     """Interface for image processing"""
-    
+
     async def process_image(self, image_path: str) -> bytes: ...
     async def validate_image(self, image_path: str) -> bool: ...
+
+
+class IRateLimiter(Protocol):
+    """Interface for rate limiting"""
+
+    async def acquire(self, estimated_tokens: int) -> Any: ...
+    def get_stats(self) -> dict[str, Any]: ...
 
 
 # ============================================================================
@@ -113,6 +121,8 @@ class DIContainer:
         self._image_processor: ImageProcessor | None = None
         self._batch_processor: BatchProcessor | None = None
         self._cost_optimizer: CostOptimizer | None = None
+        self._rate_limiter_gpt4o: RateLimiter | None = None
+        self._rate_limiter_gpt4o_mini: RateLimiter | None = None
         
         # Agents (lazy-initialized)
         self._schema_extractor: SharePointSchemaExtractorAgent | None = None
@@ -237,6 +247,32 @@ class DIContainer:
     def cost_optimizer(self, value: CostOptimizer) -> None:
         """Set cost optimizer (for testing)"""
         self._cost_optimizer = value
+
+    @property
+    def rate_limiter_gpt4o(self) -> RateLimiter:
+        """Get rate limiter for GPT-4o (singleton)"""
+        if self._rate_limiter_gpt4o is None:
+            self._rate_limiter_gpt4o = get_rate_limiter("gpt-4o")
+            logger.debug("Rate limiter for gpt-4o created")
+        return self._rate_limiter_gpt4o
+
+    @rate_limiter_gpt4o.setter
+    def rate_limiter_gpt4o(self, value: RateLimiter) -> None:
+        """Set rate limiter for GPT-4o (for testing)"""
+        self._rate_limiter_gpt4o = value
+
+    @property
+    def rate_limiter_gpt4o_mini(self) -> RateLimiter:
+        """Get rate limiter for GPT-4o-mini (singleton)"""
+        if self._rate_limiter_gpt4o_mini is None:
+            self._rate_limiter_gpt4o_mini = get_rate_limiter("gpt-4o-mini")
+            logger.debug("Rate limiter for gpt-4o-mini created")
+        return self._rate_limiter_gpt4o_mini
+
+    @rate_limiter_gpt4o_mini.setter
+    def rate_limiter_gpt4o_mini(self, value: RateLimiter) -> None:
+        """Set rate limiter for GPT-4o-mini (for testing)"""
+        self._rate_limiter_gpt4o_mini = value
 
     # ========================================================================
     # AI Agents
@@ -381,6 +417,8 @@ class DIContainer:
         self._image_processor = None
         self._batch_processor = None
         self._cost_optimizer = None
+        self._rate_limiter_gpt4o = None
+        self._rate_limiter_gpt4o_mini = None
         self._schema_extractor = None
         self._vision_analyzer = None
         self._sharepoint_uploader = None
