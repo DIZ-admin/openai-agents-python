@@ -12,7 +12,7 @@ class TestPIIDetector:
     @pytest.fixture
     def detector(self):
         """Create PIIDetector instance"""
-        return PIIDetector()
+        return PIIDetector(enable_audit=False)  # Disable audit for unit tests
     
     @pytest.mark.asyncio
     async def test_detect_person_name(self, detector):
@@ -85,12 +85,12 @@ class TestPIIDetector:
             "risk_level": "high",
             "detected_entities": [{"type": "person_name", "text": "John Smith"}]
         }
-        
-        should_block, reason = detector.should_block_processing(pii_result)
-        
+
+        should_block, reason = await detector.should_block_processing(pii_result)
+
         assert should_block is True
         assert "high-risk" in reason.lower() or "high" in reason.lower()
-    
+
     @pytest.mark.asyncio
     async def test_no_blocking_for_low_confidence(self, detector):
         """Test no blocking for low confidence PII"""
@@ -100,11 +100,11 @@ class TestPIIDetector:
             "risk_level": "high",
             "detected_entities": []
         }
-        
-        should_block, reason = detector.should_block_processing(pii_result)
-        
+
+        should_block, reason = await detector.should_block_processing(pii_result)
+
         assert should_block is False
-    
+
     @pytest.mark.asyncio
     async def test_no_blocking_when_no_pii(self, detector):
         """Test no blocking when no PII detected"""
@@ -114,9 +114,9 @@ class TestPIIDetector:
             "risk_level": "none",
             "detected_entities": []
         }
-        
-        should_block, reason = detector.should_block_processing(pii_result)
-        
+
+        should_block, reason = await detector.should_block_processing(pii_result)
+
         assert should_block is False
         assert "no pii" in reason.lower()
     
@@ -170,16 +170,16 @@ class TestPIIDetector:
         """Test that confidence threshold is properly enforced"""
         # Set custom threshold
         detector.confidence_threshold = 0.85
-        
+
         pii_result = {
             "has_pii": True,
             "confidence": 0.80,  # Below threshold
             "risk_level": "high",
             "detected_entities": []
         }
-        
-        should_block, _ = detector.should_block_processing(pii_result)
-        
+
+        should_block, _ = await detector.should_block_processing(pii_result)
+
         # Should not block because confidence is below threshold
         assert should_block is False
     
