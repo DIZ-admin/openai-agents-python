@@ -27,6 +27,7 @@ from .performance.cache_manager import ErniCacheManager
 from .performance.circuit_breaker import CircuitBreaker
 from .performance.cost_optimizer import CostBudget, CostOptimizer
 from .performance.rate_limiter import RateLimiter, get_rate_limiter
+from .session.session_manager import SessionManager
 from .utils.image_processor import ImageProcessor
 
 logger = structlog.get_logger(__name__)
@@ -123,6 +124,7 @@ class DIContainer:
         self._cost_optimizer: CostOptimizer | None = None
         self._rate_limiter_gpt4o: RateLimiter | None = None
         self._rate_limiter_gpt4o_mini: RateLimiter | None = None
+        self._session_manager: SessionManager | None = None
         
         # Agents (lazy-initialized)
         self._schema_extractor: SharePointSchemaExtractorAgent | None = None
@@ -274,6 +276,24 @@ class DIContainer:
         """Set rate limiter for GPT-4o-mini (for testing)"""
         self._rate_limiter_gpt4o_mini = value
 
+    @property
+    def session_manager(self) -> SessionManager:
+        """Get session manager"""
+        if self._session_manager is None:
+            self._session_manager = SessionManager(
+                db_path=self._config.data_dir / "sessions.db",
+                max_sessions=100,
+                session_ttl=3600,  # 1 hour
+                cleanup_interval=300  # 5 minutes
+            )
+            logger.debug("Session manager created")
+        return self._session_manager
+
+    @session_manager.setter
+    def session_manager(self, value: SessionManager) -> None:
+        """Set session manager (for testing)"""
+        self._session_manager = value
+
     # ========================================================================
     # AI Agents
     # ========================================================================
@@ -371,6 +391,9 @@ class DIContainer:
         # Initialize metrics collector
         await self.metrics_collector.start_background_tasks()
 
+        # Start session manager
+        await self.session_manager.start()
+
         self._initialized = True
         logger.info("DI Container initialized successfully")
 
@@ -386,6 +409,10 @@ class DIContainer:
             return
 
         logger.info("Shutting down DI Container components...")
+
+        # Stop session manager
+        if self._session_manager:
+            await self._session_manager.shutdown()
 
         # Stop metrics collector (if it has stop method)
         if self._metrics_collector:
@@ -419,6 +446,7 @@ class DIContainer:
         self._cost_optimizer = None
         self._rate_limiter_gpt4o = None
         self._rate_limiter_gpt4o_mini = None
+        self._session_manager = None
         self._schema_extractor = None
         self._vision_analyzer = None
         self._sharepoint_uploader = None
