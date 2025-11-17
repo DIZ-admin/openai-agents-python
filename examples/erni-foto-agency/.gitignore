@@ -1,0 +1,33 @@
+# Environment files
+.env
+.env.development.local
+.env.production.local
+.env.test.local
+.env.local
+
+# Logs & runtime outputs
+backend.log
+frontend.log
+start_dev.log
+
+# Local caches / tmp
+.cache/
+.uv-cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.sentry-native/
+
+# Runtime state
+sessions/
+uploads/
+data/*.db
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/.swc/
+frontend/.vercel/
+frontend/.eslintcache
+frontend/.cache/
